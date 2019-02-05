@@ -71,7 +71,7 @@ class Scanner {
     });
   }
 
-  async reserveCar(vehicle) {
+  reserveCar(vehicle) {
     console.log(`Reserving ${vehicle.id} at ${vehicle.address}`);
 
     this.client.publish(`C2G/C2S/11/${this.account.clientId}/REQUESTBOOKING`, JSON.stringify({

@@ -14,10 +14,10 @@ const autoreserveHandler = async (req, res) => {
     await account.init();
 
     const certificate = await readFile('certs/ca.cer');
-    const scanner = new Scanner(account, certificate);
+    const scanner = new Scanner(account);
 
-    scanner.connect();
-    scanner.reserveCar(lot);
+    scanner.connect(certificate);
+    scanner.scan(lot);
 
     res.status(200).send();
   } catch (err) {
