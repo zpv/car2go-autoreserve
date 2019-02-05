@@ -13,4 +13,4 @@ app.get('/', (req, res) => {
 
 app.post('/autoreserve', autoreserve);
 
-app.listen(process.env.PORT, () => console.log('C2G Automation Server Started'));
+app.listen(process.env.PORT || 3000, () => console.log('C2G Automation Server Started'));
