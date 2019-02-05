@@ -1,7 +1,9 @@
-// Car2Go Account
-
 const { login, renew } = require('../services/auth');
 
+/**
+ * Car2Go Account Model
+ * Renew and
+ */
 class Account {
   constructor(username, password) {
     this.username = username;

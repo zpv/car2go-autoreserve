@@ -10,6 +10,10 @@ class Scanner {
     this.account = account;
   }
 
+  /**
+   * Connect to Car2Go broker server using client certificate
+   * @param {*} certificate
+   */
   connect(certificate) {
     this.client = mqtt.connect({
       host: C2G_BROKER_ADDRESS,
@@ -40,37 +44,47 @@ class Scanner {
     this.client.end();
   }
 
+  /**
+   * Watch and reserve any vehicles available at given `lot`
+   * @param {*} lot Parking lot to watch and reserve from
+   */
   scan(lot) {
     this.client.on('message', async (topic, message) => {
-      // message is Buffer
-      if (topic === C2G_VEHICLELIST_TOPIC) {
-        this.client.unsubscribe(C2G_VEHICLELIST_TOPIC, () => {
-        });
+      // Decompress messsage
+      const data = await readMessage(message);
 
-        const vehicleRaw = await readMessage(message);
+      switch (topic) {
+        case C2G_VEHICLELIST_TOPIC: {
+          this.client.unsubscribe(C2G_VEHICLELIST_TOPIC, () => {
+          });
 
-        vehicleRaw.connectedVehicles.forEach((vehicle) => {
-          if (lot === vehicle.address) {
-            this.reserveCar(vehicle);
-          }
-        });
-      } else if (topic === C2G_VEHICLELIST_DELTA_TOPIC) {
-        const vehicleDeltas = await readMessage(message);
-        await Promise.all(vehicleDeltas.addedVehicles.map(async (vehicle) => {
-          if (lot === vehicle.address) {
-            this.reserveCar(vehicle);
-          }
-        }));
-      } else if (topic === `C2G/P2P/${this.account.clientId}.GZ`) {
-        const msg = await readMessage(message);
-
-        if (msg.eventType === 'BOOKING_RESPONSE') {
-          this.close();
+          this._parseVehicles(data.connectedVehicles, lot);
+          break;
         }
+
+        case C2G_VEHICLELIST_DELTA_TOPIC: {
+          this._parseVehicles(data.addedVehicles, lot);
+          break;
+        }
+
+        // Close connection after successful booking
+        case `C2G/P2P/${this.account.clientId}.GZ`: {
+          if (data.eventType === 'BOOKING_RESPONSE') {
+            this.close();
+          }
+          break;
+        }
+
+        default:
+          break;
       }
     });
   }
 
+  /**
+   * Request reservation of provided `vehicle`
+   * @param {*} vehicles
+  */
   reserveCar(vehicle) {
     console.log(`Reserving ${vehicle.id} at ${vehicle.address}`);
 
@@ -81,6 +95,21 @@ class Scanner {
       mqttClientId: this.account.clientId,
       timestamp: Math.round((new Date()).getTime() / 1000),
     }));
+  }
+
+  /**
+   * Parse `vehicles` list to reserve any vehicle found at given lot
+   * @param {*} vehicles
+   * @param {*} lot
+  */
+  _parseVehicles(vehicles, lot) {
+    vehicles.some((vehicle) => {
+      if (lot === vehicle.address) {
+        this.reserveCar(vehicle);
+        return true;
+      }
+      return false;
+    });
   }
 }
 
