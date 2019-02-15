@@ -71,7 +71,7 @@ Here was when I realized this project would be more complex than I initially
 thought.
 
 After refreshing the app multiple times and reserving a few cars, I found **zero
-HTTP calls **related to car locations and reservation requests.
+HTTP calls** related to car locations and reservation requests.
 
 The proxy currently only intercepts HTTP requests — so if Car2Go is making those
 requests through another protocol, I would not be able to see them. I then
@@ -109,7 +109,7 @@ instrumentation framework, to disable it.
 
 #### MQTT Protocol
 
-**Great! **With SSL Pinning disabled, we can now see the request!
+**Great!** With SSL Pinning disabled, we can now see the request!
 
 ![](https://cdn-images-1.medium.com/max/1600/1*NBwt8wyM_eLSURWtdQYfgA.png)
 
@@ -118,7 +118,7 @@ protocol Car2Go is using — **MQTT.**
 
 ![](https://cdn-images-1.medium.com/max/1600/1*8Mxk78p5kuexH-bXQ4x44w.png)
 
-> **MQTT: **A lightweight messaging protocol for small sensors and mobile devices,
+> **MQTT:** A lightweight messaging protocol for small sensors and mobile devices,
 > optimized for high-latency or unreliable networks
 
 Instead of HTTP, it looks like the reserve and car locations are served over
