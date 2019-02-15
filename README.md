@@ -122,25 +122,4 @@ protocol Car2Go is using — **MQTT.**
 > optimized for high-latency or unreliable networks
 
 Instead of HTTP, it looks like the reserve and car locations are served over
-MQTT. It is a lightweight publish-subscribe protocol. I had zero knowledge, so I
-had to do some researching.
-
-I downloaded MQTT.fx, an MQTT I could use to manually make calls to Car2Go.
-
-![](https://cdn-images-1.medium.com/max/1600/1*aC9Rpszn5EyY9UGTZr8qlw.png)
-
-To configure the client, I had enough information to fill out the address, port,
-and client-id (found in the above request). However, I needed the client CA
-certificate since connection is being made over TLS.
-
-*****
-
-#### Decompiling the Application
-
-I download the APK for the Android app and decompress it using
-[apktool](https://ibotpeaches.github.io/Apktool/).<br> Under static assets, I find the certificate store for the application.
-
-![](https://cdn-images-1.medium.com/max/1600/1*Hbjij9u2V0tLy07ecPDmEA.png)
-
-
-![](https://cdn-images-1.medium.com/max/1600/1*_hzdI0eWiu005CL_recRIg.png)
+MQTT. It is a lightweight publish-subscribe protocol. 
