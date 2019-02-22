@@ -13,7 +13,7 @@
   },
   "scripts": {
     "dev": "nodemon src/app.js",
-    "start": "node src/app.js"
+    "start": "NODE_ENV=production node src/app.js"
   },
   "devDependencies": {
     "eslint": "^5.12.1",
