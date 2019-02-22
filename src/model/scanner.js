@@ -29,6 +29,7 @@ class Scanner {
     });
 
     this.client.on('connect', () => {
+      this._log('Client connected.');
       this.client.subscribe(C2G_VEHICLELIST_TOPIC, { qos: 0 }, () => {
       });
 
@@ -37,6 +38,16 @@ class Scanner {
 
       this.client.subscribe(`C2G/P2P/${this.account.clientId}.GZ`, { qos: 1 }, () => {
       });
+    });
+
+    this.client.on('close', async () => {
+      this._log('Connection closed.');
+      this._log('Renewing authentication...');
+
+      await this.account.renew();
+      this.client.options.password = this.account.accessToken;
+
+      this._log('Renewed.');
     });
   }
 
@@ -85,8 +96,10 @@ class Scanner {
    * Request reservation of provided `vehicle`
    * @param {*} vehicles
   */
-  reserveCar(vehicle) {
-    console.log(`Reserving ${vehicle.id} at ${vehicle.address}`);
+  async reserveCar(vehicle) {
+    this._log(`Reserving ${vehicle.id} at ${vehicle.address}`);
+
+    await this.account.renew();
 
     this.client.publish(`C2G/C2S/11/${this.account.clientId}/REQUESTBOOKING`, JSON.stringify({
       locationId: 11,
@@ -110,6 +123,10 @@ class Scanner {
       }
       return false;
     });
+  }
+
+  _log(msg) {
+    console.log(`[${this.account.username}] – ${msg}`);
   }
 }
 
