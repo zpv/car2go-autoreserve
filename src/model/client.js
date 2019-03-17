@@ -60,6 +60,10 @@ class Client {
   }
 
   subscribe(topic, qos, cb) {
+    if (!this.mqttClient || !this.mqttClient.connected) {
+      this.connect();
+    }
+
     this.mqttClient.subscribe(topic, { qos }, () => {});
 
     if (cb) {
@@ -72,8 +76,8 @@ class Client {
   }
 
   async publish(topic, data) {
-    if (!this.mqttClient.connected) {
-      this.mqttClient.connect();
+    if (!this.mqttClient || !this.mqttClient.connected) {
+      this.connect();
     }
 
     await this.account.renew();
@@ -82,11 +86,11 @@ class Client {
     message.jwt = this.account.accessToken;
     message.mqttClientId = this.account.clientId;
 
-    this.client.publish(topic, JSON.stringify(message));
+    this.mqttClient.publish(topic, JSON.stringify(message));
   }
 
   close() {
-    this.client.end();
+    this.mqttClient.end();
   }
 
   _log(msg) {
