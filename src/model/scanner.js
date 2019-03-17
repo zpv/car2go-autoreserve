@@ -1,58 +1,54 @@
-const mqtt = require('mqtt');
-const { readMessage } = require('../lib/mqtt_helper');
+const { Client } = require('./client');
 
-const C2G_BROKER_ADDRESS = 'driver.na.car2go.com';
 const C2G_VEHICLELIST_TOPIC = 'C2G/S2C/4/VEHICLELIST.GZ';
 const C2G_VEHICLELIST_DELTA_TOPIC = 'C2G/S2C/4/VEHICLELISTDELTA.GZ';
 
+const _log = (msg) => {
+  console.log(`[Scanner] – ${msg}`);
+};
 class Scanner {
   constructor(account) {
-    this.account = account;
+    const scannerClient = new Client(account);
+    this.scannerClient = scannerClient;
+
+    scannerClient.setConnectCallback(
+      () => {
+        scannerClient.subscribe(C2G_VEHICLELIST_TOPIC, 0, this._onReceiveVehicleList.bind(this));
+        scannerClient.subscribe(C2G_VEHICLELIST_DELTA_TOPIC, 1, this._onReceiveVehicleDelta.bind(this));
+      },
+    );
+
+    this.scannerClient.connect();
+
+    this.clients = new Map();
   }
 
-  /**
-   * Connect to Car2Go broker server using client certificate
-   * @param {*} certificate
-   */
-  connect(certificate) {
-    this.client = mqtt.connect({
-      host: C2G_BROKER_ADDRESS,
-      port: 443,
-      protocol: 'mqtts',
-      ca: certificate,
-      clientId: this.account.clientId,
-      username: this.account.clientId,
-      password: this.account.accessToken,
-      protocolVersion: 3,
-      protocolId: 'MQIsdp',
-      rejectUnauthorized: true,
-    });
+  _onReceiveVehicleList(data) {
+    this.scannerClient.unsubscribe(C2G_VEHICLELIST_TOPIC);
+    // this._parseVehicles(data.connectedVehicles);
 
-    this.client.on('connect', () => {
-      this._log('Client connected.');
-      this.client.subscribe(C2G_VEHICLELIST_TOPIC, { qos: 0 }, () => {
+    // _log(JSON.stringify(data));
+  }
+
+  _onReceiveVehicleDelta(data) {
+    // _log(JSON.stringify(data));
+
+    data.addedVehicles.forEach((vehicle) => {
+      this.clients.forEach((location, client) => {
+        // if (location === vehicle.address) {
+        this.reserveCar(client, vehicle);
+        // }
       });
-
-      this.client.subscribe(C2G_VEHICLELIST_DELTA_TOPIC, { qos: 1 }, () => {
-      });
-
-      this.client.subscribe(`C2G/P2P/${this.account.clientId}.GZ`, { qos: 1 }, () => {
-      });
-    });
-
-    this.client.on('close', async () => {
-      this._log('Connection closed.');
-      this._log('Renewing authentication...');
-
-      await this.account.renew();
-      this.client.options.password = this.account.accessToken;
-
-      this._log('Renewed.');
     });
   }
 
-  close() {
-    this.client.end();
+  _onReceiveAccountUpdate(data) {
+    _log(data);
+  }
+
+  addClient(client, location) {
+    _log(`Client (${client.account.username}) requests ${location}`);
+    this.clients.set(client, location);
   }
 
   /**
@@ -69,12 +65,10 @@ class Scanner {
           this.client.unsubscribe(C2G_VEHICLELIST_TOPIC, () => {
           });
 
-          this._parseVehicles(data.connectedVehicles, lot);
           break;
         }
 
         case C2G_VEHICLELIST_DELTA_TOPIC: {
-          this._parseVehicles(data.addedVehicles, lot);
           break;
         }
 
@@ -96,37 +90,20 @@ class Scanner {
    * Request reservation of provided `vehicle`
    * @param {*} vehicles
   */
-  async reserveCar(vehicle) {
-    this._log(`Reserving ${vehicle.id} at ${vehicle.address}`);
+  async reserveCar(client, vehicle) {
+    _log(`(${client.account.clientId}) Reserving ${vehicle.id} at ${vehicle.address}`);
 
-    await this.account.renew();
+    client.subscribe(`C2G/P2P/${client.account.clientId}.GZ`, 0, (msg) => {
+      if (msg.eventType == 'BOOKING_RESPONSE') {
+        client.close();
+      }
+    });
 
-    this.client.publish(`C2G/C2S/11/${this.account.clientId}/REQUESTBOOKING`, JSON.stringify({
+    client.publish(`C2G/C2S/11/${client.account.clientId}/REQUESTBOOKING`, {
       locationId: 11,
       targetVehicle: vehicle.id,
-      jwt: this.account.accessToken,
-      mqttClientId: this.account.clientId,
       timestamp: Math.round((new Date()).getTime() / 1000),
-    }));
-  }
-
-  /**
-   * Parse `vehicles` list to reserve any vehicle found at given lot
-   * @param {*} vehicles
-   * @param {*} lot
-  */
-  _parseVehicles(vehicles, lot) {
-    vehicles.some((vehicle) => {
-      if (lot === vehicle.address) {
-        this.reserveCar(vehicle);
-        return true;
-      }
-      return false;
     });
-  }
-
-  _log(msg) {
-    console.log(`[${this.account.username}] – ${msg}`);
   }
 }
 
