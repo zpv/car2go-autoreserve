@@ -1117,6 +1117,11 @@ jwt-decode@^2.2.0:
   resolved "https://registry.yarnpkg.com/jwt-decode/-/jwt-decode-2.2.0.tgz#7d86bd56679f58ce6a84704a657dd392bba81a79"
   integrity sha1-fYa9VmefWM5qhHBKZX3TkruoGnk=
 
+kd-tree-javascript@^1.0.3:
+  version "1.0.3"
+  resolved "https://registry.yarnpkg.com/kd-tree-javascript/-/kd-tree-javascript-1.0.3.tgz#ab5239ed44e347e10065590fd479e947bedff96c"
+  integrity sha512-7oSugmaxTCJFqey11rlTSEQD3hGDnRgROMj9MEREvDGV8SlIFwN7x3jJRyFoi+mjO0+4wuSuaDLS1reNQHP7uA==
+
 leven@^1.0.0:
   version "1.0.2"
   resolved "https://registry.yarnpkg.com/leven/-/leven-1.0.2.tgz#9144b6eebca5f1d0680169f1a6770dcea60b75c3"

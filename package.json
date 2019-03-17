@@ -9,6 +9,7 @@
     "dotenv": "^6.2.0",
     "express": "^4.16.4",
     "jwt-decode": "^2.2.0",
+    "kd-tree-javascript": "^1.0.3",
     "mqtt": "^2.18.8"
   },
   "scripts": {

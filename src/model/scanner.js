@@ -1,7 +1,25 @@
 const { Client } = require('./client');
+const { kdTree } = require('kd-tree-javascript');
 
+const KdTree = kdTree;
 const C2G_VEHICLELIST_TOPIC = 'C2G/S2C/4/VEHICLELIST.GZ';
 const C2G_VEHICLELIST_DELTA_TOPIC = 'C2G/S2C/4/VEHICLELISTDELTA.GZ';
+
+const calcDistance = (a, b) => {
+  const rad = Math.PI / 180;
+  let lat1 = a.latiitude;
+  const lon1 = a.longitude;
+  let lat2 = b.latitude;
+  const lon2 = b.longitude;
+  const dLat = (lat2 - lat1) * rad;
+  const dLon = (lon2 - lon1) * rad;
+  lat1 *= rad;
+  lat2 *= rad;
+  const x = Math.sin(dLat / 2);
+  const y = Math.sin(dLon / 2);
+  const dist = x * x + y * y * Math.cos(lat1) * Math.cos(lat2);
+  return Math.atan2(Math.sqrt(dist), Math.sqrt(1 - dist));
+};
 
 const _log = (msg) => {
   console.log(`[Scanner] – ${msg}`);
@@ -10,6 +28,7 @@ class Scanner {
   constructor(account) {
     const scannerClient = new Client(account);
     this.scannerClient = scannerClient;
+    this.tree = null;
 
     scannerClient.setConnectCallback(
       () => {
@@ -25,9 +44,17 @@ class Scanner {
 
   _onReceiveVehicleList(data) {
     this.scannerClient.unsubscribe(C2G_VEHICLELIST_TOPIC);
-    // this._parseVehicles(data.connectedVehicles);
+    const points = [];
 
-    // _log(JSON.stringify(data));
+    data.connectedVehicles.forEach((vehicle) => {
+      points.push({
+        id: vehicle.id,
+        latitude: vehicle.geoCoordinate.latitude,
+        longitude: vehicle.geoCoordinate.longitude,
+      });
+    });
+
+    this.tree = new KdTree(points, calcDistance, ['latitude', 'longitude']);
   }
 
   _onReceiveVehicleDelta(data) {
