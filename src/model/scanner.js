@@ -1,132 +1,122 @@
-const mqtt = require('mqtt');
-const { readMessage } = require('../lib/mqtt_helper');
+const { kdTree: KdTree } = require('kd-tree-javascript');
+const { Client } = require('./client');
+const { calcDistance } = require('../utils/geo');
+const log = require('../utils/log')('Scanner');
 
-const C2G_BROKER_ADDRESS = 'driver.na.car2go.com';
 const C2G_VEHICLELIST_TOPIC = 'C2G/S2C/4/VEHICLELIST.GZ';
 const C2G_VEHICLELIST_DELTA_TOPIC = 'C2G/S2C/4/VEHICLELISTDELTA.GZ';
 
 class Scanner {
   constructor(account) {
-    this.account = account;
+    const scannerClient = new Client(account);
+    this.scannerClient = scannerClient;
+    this.tree = null;
+    this.treeMap = {};
+
+    scannerClient.setConnectCallback(
+      () => {
+        scannerClient.subscribe(C2G_VEHICLELIST_TOPIC, 0, this._onReceiveVehicleList.bind(this));
+        scannerClient.subscribe(C2G_VEHICLELIST_DELTA_TOPIC, 1, this._onReceiveVehicleDelta.bind(this));
+      },
+    );
+
+    this.scannerClient.connect();
+    this.clients = new Map(); // Client => location
   }
 
   /**
-   * Connect to Car2Go broker server using client certificate
-   * @param {*} certificate
-   */
-  connect(certificate) {
-    this.client = mqtt.connect({
-      host: C2G_BROKER_ADDRESS,
-      port: 443,
-      protocol: 'mqtts',
-      ca: certificate,
-      clientId: this.account.clientId,
-      username: this.account.clientId,
-      password: this.account.accessToken,
-      protocolVersion: 3,
-      protocolId: 'MQIsdp',
-      rejectUnauthorized: true,
+   * Builds initial KdTree
+   * @param {*} vehicles
+  */
+  _onReceiveVehicleList(data) { // initial build
+    this.scannerClient.unsubscribe(C2G_VEHICLELIST_TOPIC);
+    const points = [];
+
+    data.connectedVehicles.forEach((vehicle) => {
+      points.push(this._buildPointFromVehicle(vehicle));
     });
 
-    this.client.on('connect', () => {
-      this._log('Client connected.');
-      this.client.subscribe(C2G_VEHICLELIST_TOPIC, { qos: 0 }, () => {
-      });
-
-      this.client.subscribe(C2G_VEHICLELIST_DELTA_TOPIC, { qos: 1 }, () => {
-      });
-
-      this.client.subscribe(`C2G/P2P/${this.account.clientId}.GZ`, { qos: 1 }, () => {
-      });
-    });
-
-    this.client.on('close', async () => {
-      this._log('Connection closed.');
-      this._log('Renewing authentication...');
-
-      await this.account.renew();
-      this.client.options.password = this.account.accessToken;
-
-      this._log('Renewed.');
-    });
-  }
-
-  close() {
-    this.client.end();
+    this.tree = new KdTree(points, calcDistance, ['latitude', 'longitude']);
   }
 
   /**
-   * Watch and reserve any vehicles available at given `lot`
-   * @param {*} lot Parking lot to watch and reserve from
-   */
-  scan(lot) {
-    this.client.on('message', async (topic, message) => {
-      // Decompress messsage
-      const data = await readMessage(message);
+   * Build point in KdTree
+   * @param {*} data
+  */
+  _buildPointFromVehicle(vehicle) {
+    const {
+      id,
+      geoCoordinate: {
+        latitude,
+        longitude,
+      },
+    } = vehicle;
 
-      switch (topic) {
-        case C2G_VEHICLELIST_TOPIC: {
-          this.client.unsubscribe(C2G_VEHICLELIST_TOPIC, () => {
-          });
+    const vehicleData = {
+      id,
+      latitude,
+      longitude,
+    };
 
-          this._parseVehicles(data.connectedVehicles, lot);
-          break;
-        }
+    this.treeMap[id] = vehicleData;
 
-        case C2G_VEHICLELIST_DELTA_TOPIC: {
-          this._parseVehicles(data.addedVehicles, lot);
-          break;
-        }
+    return vehicleData;
+  }
 
-        // Close connection after successful booking
-        case `C2G/P2P/${this.account.clientId}.GZ`: {
-          if (data.eventType === 'BOOKING_RESPONSE') {
-            this.close();
-          }
-          break;
-        }
+  /**
+   * Performs actions when list of vehicles changes
+   * @param {*} data
+  */
+  _onReceiveVehicleDelta(data) {
+    if (!this.tree) {
+      return;
+    }
 
-        default:
-          break;
+    data.removedVehicles.forEach((vehicle) => {
+      const vehicleData = this.treeMap[vehicle];
+      this.tree.remove(vehicleData);
+      delete this.treeMap[vehicle];
+    });
+
+    data.addedVehicles.forEach((vehicle) => {
+      this.tree.insert(this._buildPointFromVehicle(vehicle));
+    });
+
+    this.clients.forEach((location, client) => {
+      const nearest = this.tree.nearest(location, 1);
+      if (nearest.length !== 0) {
+        this.reserveCar(client, nearest);
       }
     });
+  }
+
+  _onReceiveAccountUpdate(data) {
+    log(data);
+  }
+
+  addClient(client, location) {
+    log(`Client (${client.account.username}) requests ${location}`);
+    this.clients.set(client, location);
   }
 
   /**
    * Request reservation of provided `vehicle`
    * @param {*} vehicles
   */
-  async reserveCar(vehicle) {
-    this._log(`Reserving ${vehicle.id} at ${vehicle.address}`);
+  async reserveCar(client, vehicleId) {
+    log(`(${client.account.clientId}) Reserving ${vehicleId}`);
 
-    await this.account.renew();
-
-    this.client.publish(`C2G/C2S/11/${this.account.clientId}/REQUESTBOOKING`, JSON.stringify({
-      locationId: 11,
-      targetVehicle: vehicle.id,
-      jwt: this.account.accessToken,
-      mqttClientId: this.account.clientId,
-      timestamp: Math.round((new Date()).getTime() / 1000),
-    }));
-  }
-
-  /**
-   * Parse `vehicles` list to reserve any vehicle found at given lot
-   * @param {*} vehicles
-   * @param {*} lot
-  */
-  _parseVehicles(vehicles, lot) {
-    vehicles.some((vehicle) => {
-      if (lot === vehicle.address) {
-        this.reserveCar(vehicle);
-        return true;
+    client.subscribe(`C2G/P2P/${client.account.clientId}.GZ`, 0, (msg) => {
+      if (msg.eventType === 'BOOKING_RESPONSE') {
+        client.close();
       }
-      return false;
     });
-  }
 
-  _log(msg) {
-    console.log(`[${this.account.username}] – ${msg}`);
+    client.publish(`C2G/C2S/11/${client.account.clientId}/REQUESTBOOKING`, {
+      locationId: 11,
+      targetVehicle: vehicleId,
+      timestamp: Math.round((new Date()).getTime() / 1000),
+    });
   }
 }
 
