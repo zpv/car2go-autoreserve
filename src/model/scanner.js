@@ -1,5 +1,5 @@
-const { Client } = require('./client');
 const { kdTree } = require('kd-tree-javascript');
+const { Client } = require('./client');
 
 const KdTree = kdTree;
 const C2G_VEHICLELIST_TOPIC = 'C2G/S2C/4/VEHICLELIST.GZ';
@@ -29,6 +29,7 @@ class Scanner {
     const scannerClient = new Client(account);
     this.scannerClient = scannerClient;
     this.tree = null;
+    this.treeMap = {};
 
     scannerClient.setConnectCallback(
       () => {
@@ -39,33 +40,53 @@ class Scanner {
 
     this.scannerClient.connect();
 
-    this.clients = new Map();
+    this.clients = new Map(); // Client => location
   }
 
   _onReceiveVehicleList(data) {
     this.scannerClient.unsubscribe(C2G_VEHICLELIST_TOPIC);
     const points = [];
 
+    // initial build
     data.connectedVehicles.forEach((vehicle) => {
-      points.push({
-        id: vehicle.id,
-        latitude: vehicle.geoCoordinate.latitude,
-        longitude: vehicle.geoCoordinate.longitude,
-      });
+      points.push(this._buildPointFromVehicle(vehicle));
     });
 
     this.tree = new KdTree(points, calcDistance, ['latitude', 'longitude']);
   }
 
+  _buildPointFromVehicle(vehicle) {
+    const vehicleData = {
+      id: vehicle.id,
+      latitude: vehicle.geoCoordinate.latitude,
+      longitude: vehicle.geoCoordinate.longitude,
+    };
+
+    this.treeMap[vehicle.id] = vehicleData;
+
+    return vehicleData;
+  }
+
   _onReceiveVehicleDelta(data) {
-    // _log(JSON.stringify(data));
+    if (!this.tree) {
+      return;
+    }
+
+    data.removedVehicles.forEach((vehicle) => {
+      const vehicleData = this.treeMap[vehicle];
+      this.tree.remove(vehicleData);
+      delete this.treeMap[vehicle];
+    });
 
     data.addedVehicles.forEach((vehicle) => {
-      this.clients.forEach((location, client) => {
-        // if (location === vehicle.address) {
-        this.reserveCar(client, vehicle);
-        // }
-      });
+      this.tree.insert(this._buildPointFromVehicle(vehicle));
+    });
+
+    this.clients.forEach((location, client) => {
+      const nearest = this.tree.nearest(location, 1);
+      if (nearest.length !== 0) {
+        this.reserveCar(client, nearest);
+      }
     });
   }
 
@@ -79,56 +100,21 @@ class Scanner {
   }
 
   /**
-   * Watch and reserve any vehicles available at given `lot`
-   * @param {*} lot Parking lot to watch and reserve from
-   */
-  scan(lot) {
-    this.client.on('message', async (topic, message) => {
-      // Decompress messsage
-      const data = await readMessage(message);
-
-      switch (topic) {
-        case C2G_VEHICLELIST_TOPIC: {
-          this.client.unsubscribe(C2G_VEHICLELIST_TOPIC, () => {
-          });
-
-          break;
-        }
-
-        case C2G_VEHICLELIST_DELTA_TOPIC: {
-          break;
-        }
-
-        // Close connection after successful booking
-        case `C2G/P2P/${this.account.clientId}.GZ`: {
-          if (data.eventType === 'BOOKING_RESPONSE') {
-            this.close();
-          }
-          break;
-        }
-
-        default:
-          break;
-      }
-    });
-  }
-
-  /**
    * Request reservation of provided `vehicle`
    * @param {*} vehicles
   */
-  async reserveCar(client, vehicle) {
-    _log(`(${client.account.clientId}) Reserving ${vehicle.id} at ${vehicle.address}`);
+  async reserveCar(client, vehicleId) {
+    _log(`(${client.account.clientId}) Reserving ${vehicleId}`);
 
     client.subscribe(`C2G/P2P/${client.account.clientId}.GZ`, 0, (msg) => {
-      if (msg.eventType == 'BOOKING_RESPONSE') {
+      if (msg.eventType === 'BOOKING_RESPONSE') {
         client.close();
       }
     });
 
     client.publish(`C2G/C2S/11/${client.account.clientId}/REQUESTBOOKING`, {
       locationId: 11,
-      targetVehicle: vehicle.id,
+      targetVehicle: vehicleId,
       timestamp: Math.round((new Date()).getTime() / 1000),
     });
   }

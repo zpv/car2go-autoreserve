@@ -9,6 +9,7 @@
     "rules": {
         "no-console": "off",
         "no-underscore-dangle": "off",
-        "max-len": "off"
+        "max-len": "off",
+        "class-methods-use-this": "off"
     }
 }

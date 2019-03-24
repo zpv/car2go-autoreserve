@@ -15,7 +15,9 @@ const getScanner = async () => {
 };
 
 const autoreserveHandler = async (req, res) => {
-  const { username, password, lot } = req.body;
+  const {
+    username, password, latitude, longitude,
+  } = req.body;
 
   try {
     const account = new Account(username, password);
@@ -23,7 +25,7 @@ const autoreserveHandler = async (req, res) => {
 
     const client = new Client(account);
 
-    (await getScanner()).addClient(client, lot);
+    (await getScanner()).addClient(client, { latitude, longitude });
 
     res.status(200).send();
   } catch (err) {
