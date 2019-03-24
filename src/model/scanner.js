@@ -1,29 +1,11 @@
-const { kdTree } = require('kd-tree-javascript');
+const { kdTree: KdTree } = require('kd-tree-javascript');
 const { Client } = require('./client');
+const { calcDistance } = require('../utils/geo');
+const log = require('../utils/log')('Scanner');
 
-const KdTree = kdTree;
 const C2G_VEHICLELIST_TOPIC = 'C2G/S2C/4/VEHICLELIST.GZ';
 const C2G_VEHICLELIST_DELTA_TOPIC = 'C2G/S2C/4/VEHICLELISTDELTA.GZ';
 
-const calcDistance = (a, b) => {
-  const rad = Math.PI / 180;
-  let lat1 = a.latiitude;
-  const lon1 = a.longitude;
-  let lat2 = b.latitude;
-  const lon2 = b.longitude;
-  const dLat = (lat2 - lat1) * rad;
-  const dLon = (lon2 - lon1) * rad;
-  lat1 *= rad;
-  lat2 *= rad;
-  const x = Math.sin(dLat / 2);
-  const y = Math.sin(dLon / 2);
-  const dist = x * x + y * y * Math.cos(lat1) * Math.cos(lat2);
-  return Math.atan2(Math.sqrt(dist), Math.sqrt(1 - dist));
-};
-
-const _log = (msg) => {
-  console.log(`[Scanner] – ${msg}`);
-};
 class Scanner {
   constructor(account) {
     const scannerClient = new Client(account);
@@ -39,15 +21,17 @@ class Scanner {
     );
 
     this.scannerClient.connect();
-
     this.clients = new Map(); // Client => location
   }
 
-  _onReceiveVehicleList(data) {
+  /**
+   * Builds initial KdTree
+   * @param {*} vehicles
+  */
+  _onReceiveVehicleList(data) { // initial build
     this.scannerClient.unsubscribe(C2G_VEHICLELIST_TOPIC);
     const points = [];
 
-    // initial build
     data.connectedVehicles.forEach((vehicle) => {
       points.push(this._buildPointFromVehicle(vehicle));
     });
@@ -55,18 +39,34 @@ class Scanner {
     this.tree = new KdTree(points, calcDistance, ['latitude', 'longitude']);
   }
 
+  /**
+   * Build point in KdTree
+   * @param {*} data
+  */
   _buildPointFromVehicle(vehicle) {
+    const {
+      id,
+      geoCoordinate: {
+        latitude,
+        longitude,
+      },
+    } = vehicle;
+
     const vehicleData = {
-      id: vehicle.id,
-      latitude: vehicle.geoCoordinate.latitude,
-      longitude: vehicle.geoCoordinate.longitude,
+      id,
+      latitude,
+      longitude,
     };
 
-    this.treeMap[vehicle.id] = vehicleData;
+    this.treeMap[id] = vehicleData;
 
     return vehicleData;
   }
 
+  /**
+   * Performs actions when list of vehicles changes
+   * @param {*} data
+  */
   _onReceiveVehicleDelta(data) {
     if (!this.tree) {
       return;
@@ -91,11 +91,11 @@ class Scanner {
   }
 
   _onReceiveAccountUpdate(data) {
-    _log(data);
+    log(data);
   }
 
   addClient(client, location) {
-    _log(`Client (${client.account.username}) requests ${location}`);
+    log(`Client (${client.account.username}) requests ${location}`);
     this.clients.set(client, location);
   }
 
@@ -104,7 +104,7 @@ class Scanner {
    * @param {*} vehicles
   */
   async reserveCar(client, vehicleId) {
-    _log(`(${client.account.clientId}) Reserving ${vehicleId}`);
+    log(`(${client.account.clientId}) Reserving ${vehicleId}`);
 
     client.subscribe(`C2G/P2P/${client.account.clientId}.GZ`, 0, (msg) => {
       if (msg.eventType === 'BOOKING_RESPONSE') {
