@@ -2,7 +2,6 @@ const fs = require('fs');
 const mqtt = require('mqtt');
 
 const { readMessage } = require('../lib/mqtt_helper');
-const log = require('../utils/log')('Client');
 
 const certificate = fs.readFileSync('certs/ca.cer');
 
@@ -33,7 +32,7 @@ class Client {
     });
 
     this.mqttClient.on('connect', () => {
-      log('Client connected.');
+      this.log('Client connected.');
 
       if (this.connectCallback) {
         this.connectCallback();
@@ -50,13 +49,13 @@ class Client {
     });
 
     this.mqttClient.on('close', async () => {
-      log('Connection closed.');
-      log('Renewing authentication...');
+      this.log('Connection closed.');
+      this.log('Renewing authentication...');
 
       await this.account.renew();
       this.mqttClient.options.password = this.account.accessToken;
 
-      log('Renewed.');
+      this.log('Renewed.');
     });
   }
 

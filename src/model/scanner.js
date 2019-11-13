@@ -68,6 +68,7 @@ class Scanner {
    * @param {*} data
   */
   _onReceiveVehicleDelta(data) {
+    log('PING');
     if (!this.tree) {
       return;
     }
@@ -83,9 +84,10 @@ class Scanner {
     });
 
     this.clients.forEach((location, client) => {
-      const nearest = this.tree.nearest(location, 1);
+      const nearest = this.tree.nearest(location, 1, 2);
       if (nearest.length !== 0) {
-        this.reserveCar(client, nearest);
+        this.clients.delete(client);
+        this.reserveCar(client, nearest[0][0].id);
       }
     });
   }
@@ -95,7 +97,8 @@ class Scanner {
   }
 
   addClient(client, location) {
-    log(`Client (${client.account.username}) requests ${location}`);
+    const { latitude, longitude } = location;
+    log(`Client (${client.account.username}) [lat: ${latitude} lon: ${longitude}] connected`);
     this.clients.set(client, location);
   }
 
